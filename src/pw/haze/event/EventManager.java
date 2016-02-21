@@ -21,6 +21,7 @@ public class EventManager {
 
     private static EventManager _instance;
     public CustomEventHandler eventHandler;
+    private Comparator<CallbackData> comparator;
     private EventCallerThread thread;
     private Map<Class<?>[], ArrayList<CallbackData>> data;
     private Map<Class<?>, ArrayList<CallbackData>> registeredClasses;
@@ -34,7 +35,9 @@ public class EventManager {
         registeredClasses = new HashMap<>();
         eventHandler = new DefaultEventHandler();
         thread = new EventCallerThread();
-        eventsToCall = new HashMap<>();
+        comparator = (o1, o2) -> o1.priority.compareTo(o2.priority);
+        eventsToCall = new TreeMap<>(comparator);
+
     }
 
     /**
@@ -176,10 +179,10 @@ public class EventManager {
                                 this.data.put(eventArray, datas);
                             }
                             datas.add(data);
-                            register0(data);
-                        }
+                                register0(data);
                     }
                 }
+                    }
             }
         } catch (Throwable t) {
             t.printStackTrace();
@@ -237,9 +240,7 @@ public class EventManager {
     public synchronized void fire(Event[] events) {
         if (events.length != 0) {
             try {
-                Map<Class<?>[], ArrayList<CallbackData>> copyDataSet = new HashMap<>();
-                copyDataSet.putAll(data);
-                for (Map.Entry<Class<?>[], ArrayList<CallbackData>> entr : copyDataSet.entrySet()) {
+                for (Map.Entry<Class<?>[], ArrayList<CallbackData>> entr : data.entrySet()) {
                     for (CallbackData _data : entr.getValue()) {
                         if (_data.callbackMethod.isAnnotationPresent(EventAllowance.class)) {
                             switch (_data.callbackMethod.getAnnotation(EventAllowance.class).value()) {
@@ -263,7 +264,6 @@ public class EventManager {
                         } else {
                             /* lets check every callback data. if the eventklass equals exactly the event list, fire it */
                             if (Arrays.deepEquals(_data.eventKlass, getClassesFromArray(events))) {
-                                // _data.invoke(events);
                                 eventsToCall.put(_data, events);
                                 thread.poke();
                             }
@@ -327,32 +327,18 @@ public class EventManager {
 
     public class EventCallerThread implements Runnable {
 
-        private Comparator<CallbackData> comparator;
-
-
-        public EventCallerThread(){
-            comparator = (o1, o2) -> o1.priority.compareTo(o2.priority);
-        }
-
         @Override
         public void run() {
-            TreeMap<CallbackData, Event[]> newMap = null;
-            try {
+            try{
                 while (eventsToCall.size() != 0) {
-                    newMap = new TreeMap<>(comparator);
-                    newMap.putAll(eventsToCall);
-                    for (Map.Entry<CallbackData, Event[]> ent : eventsToCall.entrySet()){
-                    }
-                    for (Map.Entry<CallbackData, Event[]> entry : newMap.entrySet()) {
+                    for (Map.Entry<CallbackData, Event[]> entry : eventsToCall.entrySet()) {
                         entry.getKey().invoke(entry.getValue());
                         eventsToCall.remove(entry.getKey());
-                        newMap.remove(entry.getKey());
                     }
                 }
             }catch (Throwable t){
                 eventsToCall.clear();
-                assert newMap != null;
-                newMap.clear();
+                assert eventsToCall != null;
                 t.printStackTrace();
             }
         }
@@ -366,6 +352,4 @@ public class EventManager {
             }
         }
     }
-
-
 }
